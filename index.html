@@ -3,59 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Image & Video Generator</title>
+  <title>Free AI Image Generator</title>
   <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; background: #121212; color: #fff; text-align: center; }
-    input, select, button { padding: 12px; font-size: 16px; margin: 8px 0; border-radius: 6px; border: none; }
-    input { width: 70%; }
+    body { font-family: sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; background: #121212; color: #fff; text-align: center; }
+    input, button { padding: 12px; font-size: 16px; margin: 8px 0; border-radius: 6px; border: none; }
+    input { width: 75%; }
     button { background: #2ea44f; color: white; cursor: pointer; font-weight: bold; }
     button:hover { background: #2c974b; }
-    #output { margin-top: 24px; }
-    img, video { max-width: 100%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    #status { margin-top: 15px; color: #aaa; }
+    img { max-width: 100%; margin-top: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
   </style>
 </head>
 <body>
 
-  <h1>AI Media Generator</h1>
-  <p>Enter a prompt below to generate an image.</p>
-
-  <input type="text" id="prompt" placeholder="e.g., A cyberpunk city in the rain, neon lights" />
-  <select id="model">
-    <option value="flux">Flux (High Quality)</option>
-    <option value="turbo">Turbo (Fast)</option>
-  </select>
+  <h1>AI Image Generator</h1>
+  <input type="text" id="prompt" placeholder="Describe the image you want..." />
   <br>
-  <button onclick="generateMedia()">Generate</button>
+  <button onclick="generateImage()">Generate Image</button>
 
+  <div id="status"></div>
   <div id="output"></div>
 
   <script>
-    function generateMedia() {
+    async function generateImage() {
       const prompt = document.getElementById('prompt').value.trim();
-      const model = document.getElementById('model').value;
+      const status = document.getElementById('status');
       const output = document.getElementById('output');
 
-      if (!prompt) {
-        alert("Please enter a prompt first!");
-        return;
+      if (!prompt) return alert("Please enter a prompt!");
+
+      output.innerHTML = "";
+      status.innerText = "Sending request to AI Horde...";
+
+      try {
+        // 1. Submit the image generation job using the public anonymous key
+        const startRes = await fetch("https://stablehorde.net", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": "0000000000"
+          },
+          body: JSON.stringify({
+            prompt: prompt,
+            params: { width: 512, height: 512, steps: 20 }
+          })
+        });
+
+        const startData = await startRes.json();
+        if (!startData.id) throw new Error(startData.message || "Failed to start job");
+
+        const jobId = startData.id;
+
+        // 2. Check the queue every 3 seconds until the image is ready
+        const checkInterval = setInterval(async () => {
+          const checkRes = await fetch(`https://stablehorde.net{jobId}`);
+          const checkData = await checkRes.json();
+
+          status.innerText = `Generating... Queue position: ${checkData.queue_position} (Wait time: ~${checkData.wait_time}s)`;
+
+          if (checkData.done) {
+            clearInterval(checkInterval);
+            status.innerText = "Done!";
+            
+            // 3. Fetch the finished image URL
+            const finalRes = await fetch(`https://stablehorde.net{jobId}`);
+            const finalData = await finalRes.json();
+            const imgUrl = finalData.generations.img;
+
+            output.innerHTML = `<img src="${imgUrl}" alt="Generated Image" />`;
+          }
+        }, 3000);
+
+      } catch (err) {
+        status.innerHTML = `<span style="color:#ff6b6b;">Error: ${err.message} (Your school may block stablehorde.net)</span>`;
       }
-
-      output.innerHTML = "<p>Generating... please wait a few seconds.</p>";
-
-      // Encodes your prompt into a direct image generation URL
-      const encodedPrompt = encodeURIComponent(prompt);
-      const seed = Math.floor(Math.random() * 100000);
-      const imageUrl = `https://pollinations.ai{encodedPrompt}?model=${model}&seed=${seed}&nologo=true`;
-
-      const img = new Image();
-      img.onload = () => {
-        output.innerHTML = "";
-        output.appendChild(img);
-      };
-      img.onerror = () => {
-        output.innerHTML = "<p style='color:#ff6b6b;'>Error loading image. Your school network may be blocking the API domain.</p>";
-      };
-      img.src = imageUrl;
     }
   </script>
 
